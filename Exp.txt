@@ -1,0 +1,997 @@
+BHAGWAN PARSHURAM INSTITUTE OF TECHNOLOGY
+Department of Computer Science & Engineering
+PRACTICAL FILE
+Course Name: Distributed Systems and Cloud Computing Lab
+Course Code: CIE-407P
+Submitted By	: ______________________________
+Enrollment No.	: ______________________________
+Branch / Section	: ______________________________
+Semester	: ______________________________
+Submitted To	: ______________________________
+INDEX
+S. No.	Experiment Aim	Date
+1	Write a Program in Java to implement RPC	
+2	Implement the concept of Remote Method Invocation in Java.	
+3	Write a java program to implement Lamport’s Logical clock	
+4	Implement mutual exclusion service using Lamport’s Mutual Exclusion Algorithm	
+5	Install Hadoop on Windows	
+6	Run a simple application on single node Hadoop Cluster	
+7	Install Google App Engine and develop a simple web application.	
+8	Launch Web application using Google App Engine	
+9	Install Virtualbox / VMware Workstation with different flavours of linux on windows.	
+10	Simulate a cloud scenario using CloudSim and run a scheduling algorithm	
+EXPERIMENT 1
+Aim: Write a Program in Java to implement RPC
+Theory
+Remote Procedure Call (RPC) is a communication model in which a program on one machine (the client) calls a procedure that executes on another machine (the server) as if it were a local call. The programmer does not write explicit network code for each call; the details are hidden inside two pieces of code called stubs.
+The client stub packs (marshals) the procedure name and its parameters into a message and sends it over the network. The server stub receives the message, unpacks (unmarshals) the parameters, calls the actual procedure and sends the result back. The client stub unmarshals the reply and returns it to the caller. In this experiment the RPC mechanism is implemented using Java TCP sockets together with DataInputStream and DataOutputStream for marshalling.
+Tools Required
+•	Java Development Kit (JDK 8 or higher)
+•	Any text editor / IDE (Eclipse, IntelliJ IDEA, VS Code) or the command prompt
+Procedure
+1.	Create a folder and save RPCServer.java and RPCClient.java in it.
+2.	Open a command prompt in the folder and compile both files: javac RPCServer.java RPCClient.java
+3.	In the first command prompt start the server: java RPCServer. It waits on port 5000 for a client.
+4.	In a second command prompt start the client: java RPCClient.
+5.	The client calls add(), multiply() and factorial() remotely, and the server executes them and returns the results.
+RPCServer.java
+import java.io.*;
+import java.net.*;
+import java.util.Arrays;
+
+public class RPCServer {
+    // Remote procedures
+    static long add(int a, int b)      { return a + b; }
+    static long multiply(int a, int b) { return (long) a * b; }
+    static long factorial(int n) {
+        long f = 1;
+        for (int i = 2; i <= n; i++) f *= i;
+        return f;
+    }
+
+    public static void main(String[] args) throws Exception {
+        ServerSocket server = new ServerSocket(5000);
+        System.out.println("RPC Server started on port 5000. Waiting for client...");
+        Socket socket = server.accept();
+        System.out.println("Client connected: "
+                + socket.getInetAddress().getHostAddress());
+
+        DataInputStream in = new DataInputStream(socket.getInputStream());
+        DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+
+        while (true) {
+            String proc = in.readUTF();                 // procedure name
+            if (proc.equals("exit")) break;
+            int argc = in.readInt();                    // number of parameters
+            int[] params = new int[argc];
+            for (int i = 0; i < argc; i++) params[i] = in.readInt();
+            System.out.println("Request received : " + proc
+                    + Arrays.toString(params));
+
+            long result;
+            switch (proc) {
+                case "add":       result = add(params[0], params[1]);      break;
+                case "multiply":  result = multiply(params[0], params[1]); break;
+                case "factorial": result = factorial(params[0]);           break;
+                default:          result = -1;
+            }
+            out.writeLong(result);                      // send result back
+            out.flush();
+            System.out.println("Result sent     : " + result);
+        }
+        System.out.println("Client disconnected. Server stopped.");
+        socket.close();
+        server.close();
+    }
+}
+RPCClient.java
+import java.io.*;
+import java.net.*;
+
+public class RPCClient {
+    static DataInputStream in;
+    static DataOutputStream out;
+
+    // Client stub: marshals the call, sends it and unmarshals the result
+    static long call(String proc, int... params) throws IOException {
+        out.writeUTF(proc);
+        out.writeInt(params.length);
+        for (int p : params) out.writeInt(p);
+        out.flush();
+        return in.readLong();
+    }
+
+    public static void main(String[] args) throws Exception {
+        Socket socket = new Socket("localhost", 5000);
+        in = new DataInputStream(socket.getInputStream());
+        out = new DataOutputStream(socket.getOutputStream());
+        System.out.println("Connected to RPC server.");
+
+        System.out.println("add(10, 20)     = " + call("add", 10, 20));
+        System.out.println("multiply(6, 7)  = " + call("multiply", 6, 7));
+        System.out.println("factorial(10)   = " + call("factorial", 10));
+
+        out.writeUTF("exit");
+        out.flush();
+        socket.close();
+    }
+}
+Output
+Server window
+RPC Server started on port 5000. Waiting for client...
+Client connected: 127.0.0.1
+Request received : add[10, 20]
+Result sent     : 30
+Request received : multiply[6, 7]
+Result sent     : 42
+Request received : factorial[10]
+Result sent     : 3628800
+Client disconnected. Server stopped.
+Client window
+Connected to RPC server.
+add(10, 20)     = 30
+multiply(6, 7)  = 42
+factorial(10)   = 3628800
+Result: The RPC mechanism was implemented in Java using sockets. The client successfully invoked remote procedures on the server and received the correct results.
+EXPERIMENT 2
+Aim: Implement the concept of Remote Method Invocation in Java.
+Theory
+Remote Method Invocation (RMI) is the Java API for object-oriented remote calls. It allows an object running in one Java Virtual Machine to invoke methods on an object running in another JVM. Unlike plain RPC, RMI works with objects: parameters and return values can be Java objects that are serialised automatically.
+An RMI application has the following parts:
+•	Remote interface – declares the methods that can be called remotely; it extends java.rmi.Remote and every method throws RemoteException.
+•	Remote object (implementation) – implements the interface and extends UnicastRemoteObject so that it is exported to receive calls.
+•	RMI registry – a naming service on which the server binds the remote object under a name and where the client looks it up.
+•	Server – creates the remote object and binds it in the registry.
+•	Client – looks up the remote object and calls its methods through the stub.
+Tools Required
+•	Java Development Kit (JDK 8 or higher)
+•	Command prompt / terminal (two windows: one for the server and one for the client)
+Procedure
+1.	Save Calculator.java, CalculatorImpl.java, RMIServer.java and RMIClient.java in one folder.
+2.	Compile all the files: javac *.java
+3.	In the first window start the server: java RMIServer. It creates the registry on port 1099 and binds CalculatorService.
+4.	In the second window run the client: java RMIClient.
+5.	The client looks up CalculatorService in the registry and invokes add, subtract, multiply and divide on the remote object.
+Calculator.java (remote interface)
+import java.rmi.Remote;
+import java.rmi.RemoteException;
+
+// Remote interface: every remote method must throw RemoteException
+public interface Calculator extends Remote {
+    int add(int a, int b) throws RemoteException;
+    int subtract(int a, int b) throws RemoteException;
+    int multiply(int a, int b) throws RemoteException;
+    double divide(int a, int b) throws RemoteException;
+}
+CalculatorImpl.java (remote object)
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+
+// Remote object: implements the interface and is exported by UnicastRemoteObject
+public class CalculatorImpl extends UnicastRemoteObject implements Calculator {
+    public CalculatorImpl() throws RemoteException { super(); }
+
+    public int add(int a, int b) {
+        System.out.println("add(" + a + ", " + b + ") called");
+        return a + b;
+    }
+
+    public int subtract(int a, int b) {
+        System.out.println("subtract(" + a + ", " + b + ") called");
+        return a - b;
+    }
+
+    public int multiply(int a, int b) {
+        System.out.println("multiply(" + a + ", " + b + ") called");
+        return a * b;
+    }
+    public double divide(int a, int b) {
+        System.out.println("divide(" + a + ", " + b + ") called");
+        return (double) a / b;
+    }
+}
+RMIServer.java
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
+
+public class RMIServer {
+    public static void main(String[] args) throws Exception {
+        // start rmiregistry on port 1099
+        Registry registry = LocateRegistry.createRegistry(1099);
+        // bind remote object to a name
+        registry.rebind("CalculatorService", new CalculatorImpl());
+        System.out.println(
+                "RMI Server is ready. CalculatorService bound in registry.");
+    }
+}
+RMIClient.java
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
+
+public class RMIClient {
+    public static void main(String[] args) throws Exception {
+        Registry registry = LocateRegistry.getRegistry("localhost", 1099);
+        // get remote stub
+        Calculator calc = (Calculator) registry.lookup("CalculatorService");
+
+        System.out.println("Remote call add(25, 15)      = " + calc.add(25, 15));
+        System.out.println("Remote call subtract(25, 15) = " + calc.subtract(25, 15));
+        System.out.println("Remote call multiply(25, 15) = " + calc.multiply(25, 15));
+        System.out.println("Remote call divide(25, 15)   = " + calc.divide(25, 15));
+    }
+}
+Output
+Server window
+RMI Server is ready. CalculatorService bound in registry.
+add(25, 15) called
+subtract(25, 15) called
+multiply(25, 15) called
+divide(25, 15) called
+Client window
+Remote call add(25, 15)      = 40
+Remote call subtract(25, 15) = 10
+Remote call multiply(25, 15) = 375
+Remote call divide(25, 15)   = 1.6666666666666667
+Result: Remote Method Invocation was implemented in Java. The client invoked the methods of the remote Calculator object and the results were verified.
+EXPERIMENT 3
+Aim: Write a java program to implement Lamport’s Logical clock
+Theory
+In a distributed system there is no global clock, so events on different machines cannot be ordered using physical time. Lamport’s logical clock gives a way to order events using the “happened-before” relation (→):
+•	If a and b are events in the same process and a occurs before b, then a → b.
+•	If a is the sending of a message and b is the receipt of that message, then a → b.
+•	If a → b and b → c, then a → c (transitivity).
+Every process Pi keeps a counter Ci (its logical clock) and follows two rules:
+•	Rule 1: Ci is incremented by 1 before each event (internal event or send event) in process Pi.
+•	Rule 2: When Pj receives a message with timestamp ts, it sets Cj = max(Cj, ts) + 1 before delivering the message.
+If a → b then C(a) < C(b); the reverse is not necessarily true.
+Tools Required
+•	Java Development Kit (JDK 8 or higher)
+Procedure
+1.	Create the class Process with an id and a logical clock initialised to 0. For an internal event increment the clock; for a send event increment the clock and attach it to the message as the timestamp.
+2.	For a receive event set the clock to max(local clock, message timestamp) + 1.
+3.	Simulate three processes P1, P2 and P3 exchanging the messages m1 (P1 to P2), m2 (P2 to P3) and m3 (P3 to P1). Compile and run: javac LamportClock.java then java LamportClock
+LamportClock.java
+public class LamportClock {
+
+    static class Process {
+        int id;
+        int clock = 0;
+        Process(int id) { this.id = id; }
+
+        // Rule 1: increment the clock before every event
+        void internalEvent(String name) {
+            clock++;
+            System.out.printf("P%d: internal event %s -> clock = %d%n",
+                    id, name, clock);
+        }
+
+        // Send event: increment clock, attach the timestamp to the message
+        int send(int to, String msg) {
+            clock++;
+            System.out.printf(
+                    "P%d: sends %s to P%d (ts = %d) -> clock = %d%n",
+                    id, msg, to, clock, clock);
+            return clock;
+        }
+
+        // Rule 2: on receive, clock = max(local clock, message timestamp) + 1
+        void receive(int from, String msg, int ts) {
+            int old = clock;
+            clock = Math.max(clock, ts) + 1;
+            System.out.printf(
+                    "P%d: receives %s from P%d (ts = %d) -> max(%d, %d) + 1 = %d%n",
+                    id, msg, from, ts, old, ts, clock);
+        }
+    }
+
+    public static void main(String[] args) {
+        Process p1 = new Process(1), p2 = new Process(2), p3 = new Process(3);
+
+        System.out.println("=== Lamport's Logical Clock Simulation ===");
+        p1.internalEvent("a");
+        int t1 = p1.send(2, "m1");
+        p2.internalEvent("b");
+        p2.receive(1, "m1", t1);
+        p3.internalEvent("c");
+        p3.internalEvent("d");
+        int t2 = p2.send(3, "m2");
+        p3.receive(2, "m2", t2);
+        int t3 = p3.send(1, "m3");
+        p1.internalEvent("e");
+        p1.receive(3, "m3", t3);
+
+        System.out.println("\n=== Final logical clock values ===");
+        System.out.println("P1 = " + p1.clock);
+        System.out.println("P2 = " + p2.clock);
+        System.out.println("P3 = " + p3.clock);
+    }
+}
+Output
+=== Lamport's Logical Clock Simulation ===
+P1: internal event a -> clock = 1
+P1: sends m1 to P2 (ts = 2) -> clock = 2
+P2: internal event b -> clock = 1
+P2: receives m1 from P1 (ts = 2) -> max(1, 2) + 1 = 3
+P3: internal event c -> clock = 1
+P3: internal event d -> clock = 2
+P2: sends m2 to P3 (ts = 4) -> clock = 4
+P3: receives m2 from P2 (ts = 4) -> max(2, 4) + 1 = 5
+P3: sends m3 to P1 (ts = 6) -> clock = 6
+P1: internal event e -> clock = 3
+P1: receives m3 from P3 (ts = 6) -> max(3, 6) + 1 = 7
+
+=== Final logical clock values ===
+P1 = 7
+P2 = 4
+P3 = 6
+Result: Lamport’s logical clock was implemented. The clocks of the processes were updated correctly on internal, send and receive events.
+EXPERIMENT 4
+Aim: Implement mutual exclusion service using Lamport’s Mutual Exclusion Algorithm
+Theory
+Lamport’s algorithm is a permission-based algorithm that guarantees mutual exclusion in a distributed system without a central coordinator. It uses logical clocks to give every request a timestamp, so that requests are served in the order in which they were made. Each process keeps a request queue ordered by (timestamp, process id); the process id is used to break ties. Message channels are assumed to be FIFO.
+The algorithm works in the following steps:
+1.	To enter the critical section (CS), process Pi increments its clock, puts REQUEST(ts, i) in its own queue and sends REQUEST(ts, i) to all other processes.
+2.	When Pj receives REQUEST(ts, i), it puts the request in its queue and sends a REPLY message to Pi.
+3.	Pi enters the CS when (a) it has received a REPLY from every other process and (b) its own request is at the head of its queue.
+4.	On leaving the CS, Pi removes its request from its queue and sends a RELEASE message to all other processes, which then remove Pi’s request from their queues.
+For N processes, each CS entry needs 3(N − 1) messages: (N − 1) REQUEST, (N − 1) REPLY and (N − 1) RELEASE.
+Tools Required
+•	Java Development Kit (JDK 8 or higher; the program uses a record, so JDK 16 or higher is needed)
+Procedure
+1.	Create a Node class holding the logical clock, a priority queue of requests and the set of replies received.
+2.	Implement requestCS() to broadcast REQUEST, and onMessage() to handle REQUEST, REPLY and RELEASE messages as described above.
+3.	Implement tryEnter(), which lets a node enter the CS only if its request is at the head of the queue and a REPLY was received from all other nodes.
+4.	In main(), create three processes P0, P1 and P2. Let P0 and P1 request the CS at the same time and deliver the messages through a FIFO queue that represents the network.
+5.	Compile and run: javac LamportMutex.java then java LamportMutex
+LamportMutex.java
+import java.util.*;
+
+public class LamportMutex {
+
+    // Message exchanged between processes
+    record Msg(String type, int from, int to, int ts) {}
+
+    static Queue<Msg> network = new LinkedList<>();     // FIFO channel
+    static Node[] nodes;
+
+    static class Node {
+        int id, n, clock = 0, reqTs = -1;
+        boolean wantsCS = false;
+        Set<Integer> replies = new HashSet<>();
+        // request queue ordered by (timestamp, process id)
+        PriorityQueue<int[]> queue = new PriorityQueue<>(
+                (a, b) -> a[0] != b[0] ? a[0] - b[0] : a[1] - b[1]);
+
+        Node(int id, int n) { this.id = id; this.n = n; }
+
+        void send(String type, int to) {
+            network.add(new Msg(type, id, to, clock));
+        }
+
+        // Step 1: broadcast REQUEST(ts, id) and put it in own queue
+        void requestCS() {
+            clock++;
+            reqTs = clock;
+            wantsCS = true;
+            replies.clear();
+            queue.add(new int[]{reqTs, id});
+            System.out.printf("P%d requests CS            [ts=%d]%n", id, reqTs);
+            for (int j = 0; j < n; j++) if (j != id) send("REQUEST", j);
+        }
+
+        void onMessage(Msg m) {
+            clock = Math.max(clock, m.ts) + 1;
+            switch (m.type) {
+                // Step 2: queue it and send REPLY
+                case "REQUEST" -> {
+                    queue.add(new int[]{m.ts, m.from});
+                    clock++;
+                    System.out.printf(
+                            "P%d got REQUEST from P%d [ts=%d] -> sends REPLY%n",
+                            id, m.from, m.ts);
+                    send("REPLY", m.from);
+                }
+                case "REPLY" -> {
+                    replies.add(m.from);
+                    System.out.printf("P%d got REPLY   from P%d%n", id, m.from);
+                }
+                // Step 4: remove sender's request
+                case "RELEASE" -> {
+                    queue.removeIf(r -> r[1] == m.from);
+                    System.out.printf(
+                            "P%d got RELEASE from P%d -> removes request%n",
+                            id, m.from);
+                }
+            }
+            tryEnter();
+        }
+
+        // Step 3: enter CS if own request is first in the queue and
+        // REPLY has been received from all other processes
+        void tryEnter() {
+            if (wantsCS && replies.size() == n - 1 && queue.peek()[1] == id) {
+                System.out.printf(">>> P%d ENTERS critical section%n", id);
+                System.out.printf("    P%d is executing in critical section...%n",
+                        id);
+                System.out.printf("<<< P%d EXITS critical section%n", id);
+                wantsCS = false;
+                queue.removeIf(r -> r[1] == id);
+                clock++;
+                for (int j = 0; j < n; j++) if (j != id) send("RELEASE", j);
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        int n = 3;
+        nodes = new Node[n];
+        for (int i = 0; i < n; i++) nodes[i] = new Node(i, n);
+
+        System.out.println("=== Lamport's Mutual Exclusion (3 processes) ===");
+        nodes[0].requestCS();      // P0 and P1 request the CS at the same time
+        nodes[1].requestCS();
+
+        while (!network.isEmpty()) {
+            Msg m = network.poll();
+            nodes[m.to()].onMessage(m);
+        }
+        System.out.println("=== All requests served ===");
+    }
+}
+Output
+=== Lamport's Mutual Exclusion (3 processes) ===
+P0 requests CS            [ts=1]
+P1 requests CS            [ts=1]
+P1 got REQUEST from P0 [ts=1] -> sends REPLY
+P2 got REQUEST from P0 [ts=1] -> sends REPLY
+P0 got REQUEST from P1 [ts=1] -> sends REPLY
+P2 got REQUEST from P1 [ts=1] -> sends REPLY
+P0 got REPLY   from P1
+P0 got REPLY   from P2
+>>> P0 ENTERS critical section
+    P0 is executing in critical section...
+<<< P0 EXITS critical section
+P1 got REPLY   from P0
+P1 got REPLY   from P2
+P1 got RELEASE from P0 -> removes request
+>>> P1 ENTERS critical section
+    P1 is executing in critical section...
+<<< P1 EXITS critical section
+P2 got RELEASE from P0 -> removes request
+P0 got RELEASE from P1 -> removes request
+P2 got RELEASE from P1 -> removes request
+=== All requests served ===
+
+Both P0 and P1 requested the critical section with the same timestamp (1). The tie was broken by the process id, so P0 entered first. P1 entered only after it received the RELEASE message from P0, so the two processes were never in the critical section at the same time.
+Result: Mutual exclusion was implemented using Lamport’s algorithm. Only one process was in the critical section at any time and the requests were served in timestamp order.
+EXPERIMENT 5
+Aim: Install Hadoop on Windows
+Theory
+Apache Hadoop is an open-source framework for distributed storage and processing of large data sets on clusters of computers. Its main components are HDFS (Hadoop Distributed File System) for storage, YARN (Yet Another Resource Negotiator) for resource management and MapReduce for processing. HDFS has a NameNode, which keeps the metadata, and DataNodes, which store the data blocks. YARN has a ResourceManager and NodeManagers.
+Hadoop is developed mainly for Linux. To run it on Windows for learning purposes, extra native files (winutils.exe and hadoop.dll) matching the Hadoop version are copied into the bin folder. Here Hadoop is installed in single-node (pseudo-distributed) mode, in which all the daemons run on one machine.
+Requirements
+•	Windows 10 / 11 (64-bit) with administrator rights
+•	JDK 8 (or a JDK version supported by the chosen Hadoop release) installed in a path without spaces, e.g. C:\Java\jdk1.8.0
+•	Hadoop 3.3.x binary distribution (hadoop-3.3.x.tar.gz) from hadoop.apache.org
+•	winutils.exe and hadoop.dll built for the same Hadoop version
+•	7-Zip or a similar tool to extract the tar.gz file
+Procedure
+1.	Install the JDK and note the installation path. Avoid paths with spaces (such as Program Files) because the Hadoop scripts fail on them.
+2.	Download the Hadoop binary and extract it to C:\hadoop so that C:\hadoop\bin and C:\hadoop\sbin exist.
+3.	Copy winutils.exe and hadoop.dll into C:\hadoop\bin.
+4.	Set the system environment variables JAVA_HOME (the JDK folder) and HADOOP_HOME (C:\hadoop). Add %JAVA_HOME%\bin, %HADOOP_HOME%\bin and %HADOOP_HOME%\sbin to the PATH variable.
+5.	Open C:\hadoop\etc\hadoop\hadoop-env.cmd and set JAVA_HOME to the JDK folder (use the short path form if the path contains spaces).
+6.	Edit the four configuration files given below (core-site.xml, hdfs-site.xml, mapred-site.xml and yarn-site.xml) in C:\hadoop\etc\hadoop.
+7.	Create the folders C:\hadoop\data\namenode and C:\hadoop\data\datanode.
+8.	Open a new Command Prompt as Administrator and check the installation with: hadoop version
+9.	Format the NameNode (only once, before the first start): hdfs namenode -format
+10.	Start the daemons: start-dfs.cmd and then start-yarn.cmd. Separate windows open for each daemon.
+11.	Run jps and confirm that NameNode, DataNode, ResourceManager and NodeManager are running.
+12.	Open http://localhost:9870 (NameNode web UI) and http://localhost:8088 (YARN ResourceManager web UI) in the browser.
+core-site.xml
+<configuration>
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://localhost:9000</value>
+  </property>
+</configuration>
+hdfs-site.xml
+<configuration>
+  <property>
+    <name>dfs.replication</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:///C:/hadoop/data/namenode</value>
+  </property>
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>file:///C:/hadoop/data/datanode</value>
+  </property>
+</configuration>
+mapred-site.xml
+<configuration>
+  <property>
+    <name>mapreduce.framework.name</name>
+    <value>yarn</value>
+  </property>
+  <property>
+    <name>yarn.app.mapreduce.am.env</name>
+    <value>HADOOP_MAPRED_HOME=%HADOOP_HOME%</value>
+  </property>
+  <property>
+    <name>mapreduce.map.env</name>
+    <value>HADOOP_MAPRED_HOME=%HADOOP_HOME%</value>
+  </property>
+  <property>
+    <name>mapreduce.reduce.env</name>
+    <value>HADOOP_MAPRED_HOME=%HADOOP_HOME%</value>
+  </property>
+</configuration>
+yarn-site.xml
+<configuration>
+  <property>
+    <name>yarn.nodemanager.aux-services</name>
+    <value>mapreduce_shuffle</value>
+  </property>
+  <property>
+    <name>yarn.nodemanager.aux-services.mapreduce_shuffle.class</name>
+    <value>org.apache.hadoop.mapred.ShuffleHandler</value>
+  </property>
+</configuration>
+Commands used
+hadoop version
+hdfs namenode -format
+start-dfs.cmd
+start-yarn.cmd
+jps
+stop-yarn.cmd
+stop-dfs.cmd
+Output
+ 
+Output of the command: hadoop version
+
+ 
+Output of the command: jps  (NameNode, DataNode, ResourceManager, NodeManager)
+
+ 
+NameNode web UI at http://localhost:9870
+Result: Hadoop was installed and configured in single-node mode on Windows. All the HDFS and YARN daemons started successfully and the web interfaces were accessible.
+EXPERIMENT 6
+Aim: Run a simple application on single node Hadoop Cluster
+Theory
+MapReduce is the processing model of Hadoop. A job is divided into a map phase and a reduce phase. The mapper reads the input split line by line and emits intermediate (key, value) pairs. The framework then shuffles and sorts these pairs by key and gives all the values of one key to a reducer, which combines them into the final output.
+WordCount is the standard first MapReduce application. The mapper emits (word, 1) for every word in the input, and the reducer adds the values for each word to give the number of times it occurs. The input and output of the job are stored in HDFS, and the output folder must not already exist.
+Tools Required
+•	Hadoop 3.3.x running in single-node mode (Experiment 5)
+•	JDK 8 or higher
+•	WordCount.java and a sample input file input.txt
+Procedure
+1.	Start HDFS and YARN with start-dfs.cmd and start-yarn.cmd and check the daemons with jps.
+2.	Create input.txt with the sample text shown below in a working folder, for example C:\wc.
+3.	Create an input folder in HDFS and upload the file: hdfs dfs -mkdir /input and hdfs dfs -put input.txt /input
+4.	Save WordCount.java in the working folder. Get the Hadoop classpath and compile the program as shown in the commands below.
+5.	Package the compiled classes into a jar file: jar -cvf wc.jar -C classes .
+6.	Run the job: hadoop jar wc.jar WordCount /input /output
+7.	When the job finishes, display the result: hdfs dfs -cat /output/part-r-00000
+8.	The job status (SUCCEEDED) can also be seen at http://localhost:8088.
+input.txt
+hadoop is a framework for distributed storage and processing
+hadoop stores data in hdfs and processes data using mapreduce
+mapreduce splits the work into map and reduce tasks
+WordCount.java
+import java.io.IOException;
+import java.util.StringTokenizer;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class WordCount {
+
+    // Map: emits (word, 1) for every word in the input line
+    public static class TokenizerMapper
+            extends Mapper<Object, Text, Text, IntWritable> {
+        private final static IntWritable one = new IntWritable(1);
+        private Text word = new Text();
+
+        public void map(Object key, Text value, Context context)
+                throws IOException, InterruptedException {
+            StringTokenizer itr = new StringTokenizer(value.toString());
+            while (itr.hasMoreTokens()) {
+                word.set(itr.nextToken());
+                context.write(word, one);
+            }
+        }
+    }
+
+    // Reduce: adds up all the 1s received for a word
+    public static class IntSumReducer
+            extends Reducer<Text, IntWritable, Text, IntWritable> {
+        private IntWritable result = new IntWritable();
+
+        public void reduce(Text key, Iterable<IntWritable> values, Context context)
+                throws IOException, InterruptedException {
+            int sum = 0;
+            for (IntWritable val : values) sum += val.get();
+            result.set(sum);
+            context.write(key, result);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Configuration conf = new Configuration();
+        Job job = Job.getInstance(conf, "word count");
+        job.setJarByClass(WordCount.class);
+        job.setMapperClass(TokenizerMapper.class);
+        job.setCombinerClass(IntSumReducer.class);
+        job.setReducerClass(IntSumReducer.class);
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+Commands (Windows Command Prompt)
+for /f "delims=" %i in ('hadoop classpath') do set HCP=%i
+mkdir classes
+javac -classpath "%HCP%" -d classes WordCount.java
+jar -cvf wc.jar -C classes .
+
+hdfs dfs -mkdir /input
+hdfs dfs -put input.txt /input
+hadoop jar wc.jar WordCount /input /output
+hdfs dfs -cat /output/part-r-00000
+Output
+Contents of /output/part-r-00000
+a             1
+and           3
+data          2
+distributed   1
+for           1
+framework     1
+hadoop        2
+hdfs          1
+in            1
+into          1
+is            1
+map           1
+mapreduce     2
+processes     1
+processing    1
+reduce        1
+splits        1
+storage       1
+stores        1
+tasks         1
+the           1
+using         1
+work          1
+
+ 
+Console log of the completed job (hadoop jar wc.jar WordCount /input /output)
+
+ 
+YARN ResourceManager UI (http://localhost:8088) showing the application with state FINISHED / SUCCEEDED
+Result: The WordCount application was run successfully on the single-node Hadoop cluster and the word counts were obtained in HDFS.
+EXPERIMENT 7
+Aim: Install Google App Engine and develop a simple web application.
+Theory
+Google App Engine (GAE) is a Platform-as-a-Service (PaaS) offering of Google Cloud for building and hosting web applications. The developer only writes the application code and a configuration file; Google manages the servers, operating system, load balancing and automatic scaling. In the Standard environment the application runs in a sandbox for supported runtimes such as Python, Java, Node.js, Go and PHP.
+A GAE application consists of the application code, the app.yaml file that names the runtime and settings, and a requirements file for the dependencies. The application is developed and tested locally with the Google Cloud CLI (gcloud) and then deployed to the cloud (Experiment 8). This experiment uses Python with the Flask framework.
+Requirements
+•	A Google account and a Google Cloud project (billing account linked; the free daily quota of App Engine is enough for this experiment)
+•	Google Cloud CLI (gcloud) for Windows
+•	Python 3.12 (the runtime used in app.yaml) with pip
+•	A code editor such as VS Code
+Procedure: Install and set up
+1.	Download the Google Cloud CLI installer for Windows from cloud.google.com/sdk and run it with the default options.
+2.	Open the Google Cloud SDK Shell and run: gcloud init. Sign in with the Google account and select or create a project.
+3.	Create the App Engine application in the project and choose a region: gcloud app create --region=asia-south1
+4.	Check the setup with: gcloud --version and gcloud config list
+Procedure: Develop the web application
+1.	Create a folder (for example gae-demo) with the files main.py, app.yaml, requirements.txt and a templates folder containing index.html.
+2.	Install the dependency: pip install -r requirements.txt
+3.	Run the application locally: python main.py
+4.	Open http://127.0.0.1:8080/ in the browser and test the routes /, /hello/Student and /square?n=12.
+main.py
+from datetime import datetime
+from flask import Flask, render_template, request
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+    now = datetime.now().strftime("%d-%m-%Y %H:%M")
+    return render_template("index.html", time=now)
+
+
+@app.route("/hello/<name>")
+def hello(name):
+    return f"<h2>Hello, {name}! Welcome to Google App Engine.</h2>"
+
+
+@app.route("/square")
+def square():
+    n = request.args.get("n", default=5, type=int)
+    return {"number": n, "square": n * n}
+
+
+if __name__ == "__main__":
+    # Used only for local testing. App Engine runs the app with gunicorn.
+    app.run(host="127.0.0.1", port=8080, debug=True)
+templates/index.html
+<!DOCTYPE html>
+<html>
+<head><title>DSCC Lab - App Engine</title></head>
+<body>
+  <h1>Distributed Systems and Cloud Computing Lab</h1>
+  <p>This web application is running on Google App Engine.</p>
+  <p>Server time: {{ time }}</p>
+</body>
+</html>
+app.yaml
+runtime: python312
+requirements.txt
+Flask==3.0.3
+Output (local test)
+Command: curl http://127.0.0.1:8080/
+<!DOCTYPE html>
+<html>
+<head><title>DSCC Lab - App Engine</title></head>
+<body>
+  <h1>Distributed Systems and Cloud Computing Lab</h1>
+  <p>This web application is running on Google App Engine.</p>
+  <p>Server time: 03-11-2026 06:01</p>
+</body>
+</html>
+Command: curl http://127.0.0.1:8080/hello/Student
+<h2>Hello, Student! Welcome to Google App Engine.</h2>
+Command: curl "http://127.0.0.1:8080/square?n=12"
+{
+  "number": 12,
+  "square": 144
+}
+
+ 
+Browser showing the home page at http://127.0.0.1:8080/
+Result: Google Cloud CLI was installed and a simple Flask web application for Google App Engine was developed and tested successfully on the local machine.
+EXPERIMENT 8
+Aim: Launch Web application using Google App Engine
+Theory
+Deploying uploads the application code to Google Cloud, where App Engine builds it, creates a new version of the service and serves it at a public URL of the form https://PROJECT_ID.REGION_CODE.r.appspot.com. Each deployment creates a new version, and traffic can be moved between the versions. App Engine starts instances automatically when requests arrive and stops them when there is no traffic, so the application scales without manual work.
+Tools Required
+•	Google Cloud CLI (installed in Experiment 7)
+•	The web application from Experiment 7 (main.py, app.yaml, requirements.txt, templates/index.html)
+•	Internet connection and a Google Cloud project with App Engine created
+Procedure
+1.	Open the Google Cloud SDK Shell and go to the application folder: cd gae-demo
+2.	Make sure the correct project is selected: gcloud config set project PROJECT_ID
+3.	Enable the required services if the console asks for it (App Engine Admin API and Cloud Build API).
+4.	Deploy the application: gcloud app deploy. Check the target project and URL shown by the command and enter Y to continue.
+5.	Wait until the message that the deployment is complete is displayed.
+6.	Open the launched application in the browser: gcloud app browse
+7.	Test the routes /, /hello/Student and /square?n=12 on the public URL.
+8.	View the versions and the logs of the application: gcloud app versions list and gcloud app logs tail -s default
+9.	Open the App Engine dashboard in the Google Cloud console to see the requests and instances.
+Commands used
+cd gae-demo
+gcloud config set project PROJECT_ID
+gcloud app deploy
+gcloud app browse
+gcloud app versions list
+gcloud app logs tail -s default
+Output
+ 
+Output of: gcloud app deploy  (deployment complete)
+
+ 
+Web application opened in the browser using the public appspot.com URL
+
+ 
+App Engine dashboard / Versions page in the Google Cloud console
+Result: The web application was deployed to Google App Engine and was successfully launched using its public URL.
+EXPERIMENT 9
+Aim: Install Virtualbox / VMware Workstation with different flavours of linux on windows.
+Theory
+Virtualization allows several operating systems to run at the same time on one physical computer. A hypervisor creates virtual machines (VMs), each with its own virtual CPU, memory, disk and network adapter. Oracle VirtualBox and VMware Workstation are Type-2 (hosted) hypervisors, which run as ordinary applications on top of a host operating system such as Windows. The operating system installed inside a VM is called the guest.
+Linux is available in many flavours (distributions) such as Ubuntu, Fedora, Debian and Linux Mint, which differ in their package managers, default desktop and release cycle. Here two different flavours are installed in separate VMs on a Windows host.
+Requirements
+•	Windows host with a 64-bit CPU that supports virtualization (Intel VT-x / AMD-V enabled in the BIOS / UEFI), at least 8 GB RAM and 60 GB free disk space
+•	Oracle VirtualBox for Windows hosts (virtualbox.org), or VMware Workstation
+•	ISO image of Ubuntu Desktop LTS and ISO image of a second flavour such as Fedora Workstation
+Procedure: Install the hypervisor
+1.	Check that virtualization is enabled: Task Manager > Performance > CPU > Virtualization should show Enabled. If it is disabled, enable VT-x / AMD-V in the BIOS / UEFI settings.
+2.	Download the VirtualBox installer for Windows hosts and run it with the default options. Allow the network adapter installation prompt.
+3.	Start Oracle VirtualBox Manager.
+Procedure: Create a virtual machine for each Linux flavour
+1.	Click New. Enter a name (for example Ubuntu-VM), select the ISO image, and set Type = Linux and the matching Version.
+2.	Allocate hardware: Base memory 2048 MB, Processors 2, Virtual hard disk 25 GB (VDI, dynamically allocated).
+3.	Click Finish, select the VM and click Start. The VM boots from the ISO image.
+4.	Choose Install on the boot screen and follow the installer: language, keyboard, disk (erase the virtual disk), time zone, user name and password.
+5.	After the installation restart the VM and log in. Remove the ISO from the virtual optical drive if the installer asks for it.
+6.	Install the Guest Additions (Devices > Insert Guest Additions CD image) for a better screen resolution and a shared clipboard.
+7.	Repeat steps 1 to 6 to create a second VM with the other flavour (for example Fedora-VM).
+8.	In each VM open a terminal and run cat /etc/os-release and uname -r to confirm the Linux flavour and kernel version.
+In VMware Workstation the same VMs are created with File > New Virtual Machine, selecting the ISO image and the guest operating system, and then following the same installation steps.
+VM configuration used
+VM name	Linux flavour	RAM	CPU	Disk
+Ubuntu-VM	Ubuntu Desktop LTS	2048 MB	2	25 GB
+Fedora-VM	Fedora Workstation	2048 MB	2	25 GB
+Commands used inside the guest
+cat /etc/os-release
+uname -r
+hostnamectl
+Output
+ 
+VirtualBox Manager showing both virtual machines (Ubuntu-VM and Fedora-VM)
+
+ 
+Ubuntu VM terminal showing the output of cat /etc/os-release and uname -r
+
+ 
+Fedora VM terminal showing the output of cat /etc/os-release and uname -r
+Result: Oracle VirtualBox was installed on Windows and two virtual machines with different flavours of Linux were created and run successfully.
+EXPERIMENT 10
+Aim: Simulate a cloud scenario using CloudSim and run a scheduling algorithm
+Theory
+CloudSim is a Java-based simulation toolkit for modelling cloud computing environments and testing resource-allocation and scheduling policies without needing a real cloud. Its main entities are:
+•	Datacenter – the resource provider; it contains a list of hosts.
+•	Host – a physical machine with processing elements (Pe, measured in MIPS), RAM and bandwidth.
+•	Vm – a virtual machine created on a host.
+•	Cloudlet – a task (job) whose size is given in million instructions (MI).
+•	DatacenterBroker – acts on behalf of the user: it creates the VMs and submits the cloudlets.
+Scheduling happens at two levels: the VmScheduler decides how the host’s processors are shared among VMs, and the CloudletScheduler decides how a VM’s processor is shared among its cloudlets. With CloudletSchedulerSpaceShared a VM runs one cloudlet at a time in the order in which they were received, so the order of submission decides the schedule. The following algorithms are compared:
+•	FCFS (First Come First Served) – cloudlets are submitted in their order of arrival.
+•	SJF (Shortest Job First) – the cloudlets are sorted by length and the shortest one is submitted first, which usually reduces the average completion time.
+Tools Required
+•	JDK 8 or higher
+•	CloudSim 3.0.3 (cloudsim-3.0.3.zip from the CloudSim GitHub releases page; the jar is in the jars folder)
+•	Eclipse IDE for Java (or the command prompt)
+Procedure
+1.	Download cloudsim-3.0.3.zip and extract it. The file jars\cloudsim-3.0.3.jar is the CloudSim library.
+2.	In Eclipse create a new Java Project, then add cloudsim-3.0.3.jar through Project > Properties > Java Build Path > Libraries > Add External JARs.
+3.	Create the class SchedulingDemo in the project and type the program given below.
+4.	The program initialises CloudSim, creates one datacenter with two hosts (2 processing elements of 1000 MIPS each), a broker, two VMs of 1000 MIPS with space-shared cloudlet scheduling, and six cloudlets of different lengths.
+5.	Run the program with the program argument FCFS (Run > Run Configurations > Arguments), and then again with the argument SJF.
+6.	To run from the command prompt instead: javac -cp cloudsim-3.0.3.jar SchedulingDemo.java and then java -cp .;cloudsim-3.0.3.jar SchedulingDemo FCFS (use SJF for the second run).
+7.	Compare the start time, finish time, average completion time and makespan of both the algorithms.
+SchedulingDemo.java
+import java.text.DecimalFormat;
+import java.util.*;
+
+import org.cloudbus.cloudsim.*;
+import org.cloudbus.cloudsim.core.CloudSim;
+import org.cloudbus.cloudsim.provisioners.*;
+
+/**
+ * CloudSim scheduling demo.
+ * Usage: java SchedulingDemo FCFS   |   java SchedulingDemo SJF
+ * FCFS : cloudlets are submitted to the broker in arrival order
+ * SJF  : cloudlets are sorted by length (shortest job first) before submission
+ */
+public class SchedulingDemo {
+
+    public static void main(String[] args) throws Exception {
+        String algo = args.length > 0 ? args[0].toUpperCase() : "FCFS";
+        // keep CloudSim's own log quiet
+        Log.disable();
+
+        // Step 1: initialise the CloudSim package
+        CloudSim.init(1, Calendar.getInstance(), false);
+
+        // Step 2: create a datacenter with two hosts
+        Datacenter datacenter = createDatacenter("Datacenter_0");
+
+        // Step 3: create a broker
+        DatacenterBroker broker = new DatacenterBroker("Broker_0");
+        int brokerId = broker.getId();
+
+        // Step 4: create 2 VMs (1000 MIPS each, space-shared scheduling)
+        List<Vm> vmList = new ArrayList<>();
+        for (int i = 0; i < 2; i++)
+            vmList.add(new Vm(i, brokerId, 1000, 1, 512, 1000, 10000, "Xen",
+                    new CloudletSchedulerSpaceShared()));
+        broker.submitVmList(vmList);
+
+        // Step 5: create 6 cloudlets of different length (MI)
+        long[] length = {40000, 10000, 30000, 20000, 50000, 15000};
+        List<Cloudlet> cloudletList = new ArrayList<>();
+        UtilizationModel full = new UtilizationModelFull();
+        for (int i = 0; i < length.length; i++) {
+            Cloudlet c = new Cloudlet(i, length[i], 1, 300, 300, full, full, full);
+            c.setUserId(brokerId);
+            cloudletList.add(c);
+        }
+
+        // Step 6: apply the scheduling algorithm
+        if (algo.equals("SJF"))
+            cloudletList.sort(Comparator.comparingLong(Cloudlet::getCloudletLength));
+        broker.submitCloudletList(cloudletList);
+
+        // Step 7: run the simulation
+        CloudSim.startSimulation();
+        List<Cloudlet> result = broker.getCloudletReceivedList();
+        CloudSim.stopSimulation();
+
+        printResult(result, algo);
+    }
+
+    private static Datacenter createDatacenter(String name) throws Exception {
+        List<Host> hostList = new ArrayList<>();
+        for (int h = 0; h < 2; h++) {
+            List<Pe> peList = new ArrayList<>();
+            peList.add(new Pe(0, new PeProvisionerSimple(1000)));
+            peList.add(new Pe(1, new PeProvisionerSimple(1000)));
+            hostList.add(new Host(h, new RamProvisionerSimple(2048),
+                    new BwProvisionerSimple(10000), 1000000, peList,
+                    new VmSchedulerTimeShared(peList)));
+        }
+        DatacenterCharacteristics ch = new DatacenterCharacteristics(
+                "x86", "Linux", "Xen", hostList, 10.0, 3.0, 0.05, 0.001, 0.0);
+        return new Datacenter(name, ch, new VmAllocationPolicySimple(hostList),
+                new LinkedList<Storage>(), 0);
+    }
+
+    private static void printResult(List<Cloudlet> list, String algo) {
+        list.sort(Comparator.comparingDouble(Cloudlet::getFinishTime));
+        DecimalFormat df = new DecimalFormat("0.00");
+        double total = 0, makespan = 0;
+        System.out.println("Scheduling algorithm : " + algo);
+        System.out.println("========== OUTPUT ==========");
+        System.out.println("Cloudlet  Status   VM  Length(MI)  Start   Finish");
+        for (Cloudlet c : list) {
+            System.out.printf("%-9d %-8s %-3d %-11d %-7s %s%n", c.getCloudletId(),
+                    c.getCloudletStatus() == Cloudlet.SUCCESS ? "SUCCESS" : "FAILED",
+                    c.getVmId(), c.getCloudletLength(),
+                    df.format(c.getExecStartTime()), df.format(c.getFinishTime()));
+            total += c.getFinishTime();
+            makespan = Math.max(makespan, c.getFinishTime());
+        }
+        System.out.println("Average completion time : "
+                + df.format(total / list.size()) + " sec");
+        System.out.println("Makespan                : "
+                + df.format(makespan) + " sec");
+    }
+}
+Output
+Run 1: java SchedulingDemo FCFS
+Scheduling algorithm : FCFS
+========== OUTPUT ==========
+Cloudlet  Status   VM  Length(MI)  Start   Finish
+1         SUCCESS  1   10000       0.10    10.10
+3         SUCCESS  1   20000       10.10   30.10
+0         SUCCESS  0   40000       0.10    40.10
+5         SUCCESS  1   15000       30.10   45.10
+2         SUCCESS  0   30000       40.10   70.10
+4         SUCCESS  0   50000       70.10   120.10
+Average completion time : 52.60 sec
+Makespan                : 120.10 sec
+Run 2: java SchedulingDemo SJF
+Scheduling algorithm : SJF
+========== OUTPUT ==========
+Cloudlet  Status   VM  Length(MI)  Start   Finish
+1         SUCCESS  0   10000       0.10    10.10
+5         SUCCESS  1   15000       0.10    15.10
+3         SUCCESS  0   20000       10.10   30.10
+2         SUCCESS  1   30000       15.10   45.10
+0         SUCCESS  0   40000       30.10   70.10
+4         SUCCESS  1   50000       45.10   95.10
+Average completion time : 44.27 sec
+Makespan                : 95.10 sec
+Comparison
+Parameter	FCFS	SJF
+Average completion time (sec)	52.60	44.27
+Makespan (sec)	120.10	95.10
+
+In this simulation SJF gave a lower average completion time and a lower makespan than FCFS. With FCFS the longest cloudlets (lengths 30000 and 50000 MI) were queued one after the other on VM 0, so that VM finished last. With SJF the short cloudlets were completed first and the load was divided more evenly between the two VMs.
+Result: A cloud scenario was simulated using CloudSim and the FCFS and SJF scheduling algorithms were run and compared.
